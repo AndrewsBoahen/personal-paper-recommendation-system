@@ -33,10 +33,42 @@ paper-recommender/
 ├── topics.py                           # Fixed research-topic definitions
 ├── sources/
 │   ├── arxiv_client.py                 # arXiv API + XML parsing
-│   └── semantic_scholar_client.py      # Semantic Scholar enrichment
+│   ├── semantic_scholar_client.py      # Semantic Scholar enrichment
+│   └── summarizer.py                   # On-demand "quick summary" via Anthropic API
 ├── requirements.txt
 └── README.md
 ```
+
+## Papers view: This Year / Previous Years
+
+Papers from your selected topics are merged into one deduplicated list
+(a paper matching more than one topic shows up once, tagged with all the
+topics it matched) and split into two sections by publication year:
+**This Year** and **Previous Years**. Sort order (most recent / most
+cited) applies within each section independently.
+
+## Quick summaries
+
+Each paper has a **🔎 Quick summary** button that calls the Anthropic
+API to generate a 1–2 sentence plain-language summary of its main idea —
+useful for scanning a long list faster than reading full abstracts.
+This is on-demand only (nothing is summarized until you click the
+button for that specific paper), and each summary is cached for a day
+so re-clicking doesn't re-spend API credit.
+
+Requires an Anthropic API key, entered the same way as the Semantic
+Scholar key:
+
+- **Streamlit Community Cloud:** App settings → Secrets:
+  ```toml
+  ANTHROPIC_API_KEY = "your-key-here"
+  ```
+- **Locally:** add the same line to `.streamlit/secrets.toml`
+- **Or:** paste it into the sidebar field for that session only
+
+Get a key at [console.anthropic.com](https://console.anthropic.com/).
+Without a key, the button still appears but shows a reminder to add one
+instead of failing.
 
 ## Run locally
 
@@ -65,6 +97,36 @@ enrichment all enabled. To raise the limit:
    [Semantic Scholar API page](https://www.semanticscholar.org/product/api).
 2. On Streamlit Community Cloud, add it under **App settings → Secrets**:
    ```toml
+   SEMANTIC_SCHOLAR_API_KEY = "your-key-here"
+   ```
+3. Locally, create `.streamlit/secrets.toml` with the same line (this
+   file is gitignored — see below).
+
+The app reads the key automatically if present; otherwise the sidebar
+lets you paste one in for that session, and falls back to the shared
+unauthenticated limit if left blank.
+
+## Customizing the topic list
+
+Edit `RESEARCH_TOPICS` in `topics.py`. Each `Topic` needs:
+
+- `name` — shown in the UI as a section header
+- `arxiv_query` — arXiv search syntax (`ti:`, `abs:`, `AND`/`OR`)
+- `arxiv_categories` — arXiv category codes to restrict to (e.g. `stat.ML`)
+- `keywords` — a short tuple used as a lightweight relevance filter on
+  top of arXiv's own (fairly blunt) search matching
+
+## Known limitations
+
+- A paper relevant to two topics (e.g. both "Gaussian Process" and
+  "Uncertainty Quantification") will appear once under each topic's
+  section rather than being deduplicated — this is intentional for now,
+  since which section it's filed under is itself informative, but could
+  be changed in `app.py`'s rendering loop if a single deduplicated feed
+  is preferred later.
+- Semantic Scholar matching is by title string, so a paper whose arXiv
+  and Semantic Scholar titles differ (e.g. after a revision) may not get
+  enriched — it just falls back to the arXiv-only fields in that case.   ```toml
    SEMANTIC_SCHOLAR_API_KEY = "your-key-here"
    ```
 3. Locally, create `.streamlit/secrets.toml` with the same line (this
