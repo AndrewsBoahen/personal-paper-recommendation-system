@@ -24,7 +24,6 @@ import streamlit as st
 
 from sources.arxiv_client import Paper, fetch_papers_for_topics
 from sources.semantic_scholar_client import enrich_papers
-from sources.summarizer import SummarizerError, summarize_abstract
 from topics import RESEARCH_TOPICS, Topic
 
 st.set_page_config(page_title="Paper Recommendations", page_icon="📄", layout="wide")
@@ -91,26 +90,7 @@ def _sort_papers(papers: list[Paper], sort_mode: str) -> list[Paper]:
     return sorted(papers, key=lambda p: p.published, reverse=True)  # "Most recent"
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def _cached_summary(arxiv_id: str, title: str, abstract: str, api_key: str) -> str:
-    """
-    Thin cache wrapper around summarize_abstract, keyed by the paper's own
-    content rather than the Paper object (which isn't hashable the way
-    st.cache_data needs). Cached for a day since an abstract's summary
-    never changes — no reason to pay for the same summary twice.
-    """
-    fake_paper = Paper(
-        title=title,
-        authors=[],
-        abstract=abstract,
-        published=datetime.now(timezone.utc),
-        arxiv_id=arxiv_id,
-        arxiv_url="",
-    )
-    return summarize_abstract(fake_paper, api_key=api_key)
-
-
-def _render_paper(paper: Paper, anthropic_api_key: str | None) -> None:
+def _render_paper(paper: Paper) -> None:
     authors = ", ".join(paper.authors[:6])
     if len(paper.authors) > 6:
         authors += ", et al."
@@ -132,31 +112,6 @@ def _render_paper(paper: Paper, anthropic_api_key: str | None) -> None:
 
     with st.expander("Abstract"):
         st.write(paper.abstract)
-
-    summary_key = f"summary_{paper.arxiv_id}"
-    button_col, _ = st.columns([1, 4])
-    with button_col:
-        summarize_clicked = st.button(
-            "🔎 Quick summary", key=f"summarize_button_{paper.arxiv_id}"
-        )
-
-    if summarize_clicked:
-        if not anthropic_api_key:
-            st.warning(
-                "Add an Anthropic API key in the sidebar to enable quick summaries."
-            )
-        else:
-            with st.spinner("Summarizing..."):
-                try:
-                    st.session_state[summary_key] = _cached_summary(
-                        paper.arxiv_id, paper.title, paper.abstract, anthropic_api_key
-                    )
-                except SummarizerError as exc:
-                    st.session_state[summary_key] = None
-                    st.error(f"Couldn't summarize this paper: {exc}")
-
-    if st.session_state.get(summary_key):
-        st.info(st.session_state[summary_key])
 
     links = [f"[arXiv]({paper.arxiv_url})"]
     if paper.semantic_scholar_url:
@@ -209,17 +164,6 @@ def main() -> None:
                 help="Raises the rate limit. Leave blank to use the shared unauthenticated limit.",
             )
 
-        st.divider()
-        st.caption(
-            "Optional: enables the '🔎 Quick summary' button on each paper "
-            "(calls the Anthropic API — costs a small amount of API credit "
-            "per summary, only when you click it)."
-        )
-        anthropic_secret = st.secrets.get("ANTHROPIC_API_KEY", None)
-        anthropic_api_key = anthropic_secret or st.text_input(
-            "Anthropic API key (optional)", type="password"
-        )
-
         fetch_clicked = st.button("Get recommendations", type="primary")
 
     if not topic_names:
@@ -246,7 +190,7 @@ def main() -> None:
             st.write("No papers found in this group for the current settings.")
             continue
         for paper in _sort_papers(papers, sort_mode):
-            _render_paper(paper, anthropic_api_key or None)
+            _render_paper(paper)
 
 
 if __name__ == "__main__":
